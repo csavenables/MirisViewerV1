@@ -17,6 +17,7 @@ body {
 .app {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   position: relative;
 }
 
@@ -57,13 +58,14 @@ miris-stream {
 
 .controls {
   position: fixed;
-  top: 14px;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
+  max-width: calc(100vw - 20px);
   z-index: 10;
 }
 
@@ -106,12 +108,13 @@ miris-stream {
 
 @media (max-width: 640px) {
   .controls {
-    top: 10px;
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    gap: 6px;
   }
 
   .controls button,
   .view-tool-toggle {
-    padding: 8px 12px;
-    font-size: 12px;
+    padding: 7px 10px;
+    font-size: 11px;
   }
 }

@@ -40,6 +40,8 @@ const ROTATE_SPEED_Y = 0.008;
 const ROTATE_PITCH_MIN = -1.2;
 const ROTATE_PITCH_MAX = 1.2;
 const AUTO_SPIN_SPEED = 0.012;
+const WHEEL_DOLLY_SPEED = 0.009;
+const TOUCH_PINCH_DOLLY_SPEED = 0.018;
 
 const TARGET_FILL_MIN = 0.78;
 const TARGET_FILL_MAX = 0.88;
@@ -420,10 +422,51 @@ let lastPanX = 0;
 let lastPanY = 0;
 let lastRotateX = 0;
 let lastRotateY = 0;
+const touchPoints = new Map();
+let lastTouchDistance = 0;
+let lastTouchCenterX = 0;
+let lastTouchCenterY = 0;
+
+function getTouchPointsArray() {
+  return Array.from(touchPoints.values());
+}
+
+function getTouchCenter(points) {
+  if (!points.length) return null;
+  let x = 0;
+  let y = 0;
+  for (const point of points) {
+    x += point.x;
+    y += point.y;
+  }
+  return { x: x / points.length, y: y / points.length };
+}
+
+function getTouchDistance(points) {
+  if (points.length < 2) return 0;
+  const a = points[0];
+  const b = points[1];
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  return Math.sqrt((dx * dx) + (dy * dy));
+}
 
 viewerStage.addEventListener("pointerdown", (event) => {
   // Cancel any in-flight auto-fit as soon as user takes control.
   activeFitToken += 1;
+
+  if (event.pointerType === "touch") {
+    touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    viewerStage.setPointerCapture(event.pointerId);
+
+    const points = getTouchPointsArray();
+    const center = getTouchCenter(points);
+    lastTouchCenterX = center?.x ?? event.clientX;
+    lastTouchCenterY = center?.y ?? event.clientY;
+    lastTouchDistance = getTouchDistance(points);
+    event.preventDefault();
+    return;
+  }
 
   if (event.button === 0) {
     isRotating = true;
@@ -445,6 +488,44 @@ viewerStage.addEventListener("pointerdown", (event) => {
 });
 
 viewerStage.addEventListener("pointermove", (event) => {
+  if (event.pointerType === "touch" && touchPoints.has(event.pointerId) && activeAssetId) {
+    touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const points = getTouchPointsArray();
+    const current = readCurrentViewState();
+
+    if (points.length === 1) {
+      const point = points[0];
+      const dx = point.x - lastTouchCenterX;
+      const dy = point.y - lastTouchCenterY;
+      current.rotationY += dx * ROTATE_SPEED_Y;
+      current.rotationX = clamp(current.rotationX + (dy * ROTATE_SPEED_X), ROTATE_PITCH_MIN, ROTATE_PITCH_MAX);
+      lastTouchCenterX = point.x;
+      lastTouchCenterY = point.y;
+    } else if (points.length >= 2) {
+      const center = getTouchCenter(points);
+      const distance = getTouchDistance(points);
+      const dx = center.x - lastTouchCenterX;
+      const dy = center.y - lastTouchCenterY;
+      const panScale = clamp(Math.abs(current.z) * 0.0018, 0.002, 0.014);
+      current.x += dx * panScale;
+      current.y -= dy * panScale;
+
+      if (lastTouchDistance > 0 && distance > 0) {
+        const distDelta = distance - lastTouchDistance;
+        current.z = clamp(current.z + (distDelta * TOUCH_PINCH_DOLLY_SPEED), MIN_Z, MAX_Z);
+      }
+
+      lastTouchCenterX = center.x;
+      lastTouchCenterY = center.y;
+      lastTouchDistance = distance;
+    }
+
+    applyViewState(current);
+    saveManualStateForActive(current);
+    event.preventDefault();
+    return;
+  }
+
   if (isRotating && event.pointerId === rotatePointerId && activeAssetId) {
     const dx = event.clientX - lastRotateX;
     const dy = event.clientY - lastRotateY;
@@ -479,6 +560,19 @@ viewerStage.addEventListener("pointermove", (event) => {
 });
 
 function endPointer(event) {
+  if (event.pointerType === "touch" && touchPoints.has(event.pointerId)) {
+    touchPoints.delete(event.pointerId);
+    const remainingPoints = getTouchPointsArray();
+    const center = getTouchCenter(remainingPoints);
+    if (center) {
+      lastTouchCenterX = center.x;
+      lastTouchCenterY = center.y;
+    }
+    lastTouchDistance = getTouchDistance(remainingPoints);
+    event.preventDefault();
+    return;
+  }
+
   if (isPanning && event.pointerId === panPointerId) {
     isPanning = false;
     panPointerId = null;
@@ -512,7 +606,7 @@ viewerStage.addEventListener("wheel", (event) => {
     const zoomMultiplier = event.deltaY < 0 ? 1 + (0.08 * wheelUnit) : 1 / (1 + (0.08 * wheelUnit));
     current.zoom = clamp(current.zoom * zoomMultiplier, MIN_ZOOM, MAX_ZOOM);
   } else {
-    current.z = clamp(current.z - (event.deltaY * 0.018), MIN_Z, MAX_Z);
+    current.z = clamp(current.z - (event.deltaY * WHEEL_DOLLY_SPEED), MIN_Z, MAX_Z);
   }
 
   applyViewState(current);
