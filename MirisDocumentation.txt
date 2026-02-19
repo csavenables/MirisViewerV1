@@ -1,0 +1,456 @@
+Miris SDK
+Embed high-fidelity, streaming 3D content into your web applications with just a few lines of code.
+
+Introduction
+The Miris SDK enables you to embed photorealistic 3D content that streams progressively, ensuring fast load times and smooth performance across all devices. Using cutting-edge Gaussian Splat technology, Miris delivers unparalleled visual fidelity.
+
+⚡
+Instant Loading
+Progressive streaming means content appears immediately and refines over time
+🎨
+Photorealistic Quality
+Gaussian splatting delivers unparalleled visual fidelity
+🔧
+Simple Integration
+Drop-in Web Components or flexible Three.js API
+📱
+Responsive
+Automatic LOD management optimizes for any device
+Quick Start
+Get started with Miris in under 5 minutes. Choose your preferred integration method:
+
+HTML Embed
+npm Package
+The simplest way to get started. Add a single script tag and start embedding 3D content:
+
+HTML
+Copy
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- Load the Miris SDK from npm -->
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@miris-inc/components/components.mjs"></script>
+  <style>
+    miris-stream {
+      width: 100%;
+      height: 400px;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <miris-stream
+    key="YOUR_VIEWER_KEY"
+    uuid="YOUR_ASSET_UUID"
+    controls
+  ></miris-stream>
+</body>
+</html>
+💡 That's it!
+Replace YOUR_VIEWER_KEY and YOUR_ASSET_UUID with your credentials.
+
+Getting Your Credentials
+Viewer Key
+Your Viewer Key authenticates your application with Miris servers. Contact your Miris account representative to obtain your viewer key.
+
+Asset UUID
+Each 3D asset in your Miris library has a unique UUID. You can:
+
+Find UUIDs in the Miris Dashboard
+Fetch them programmatically using the SDK (see Fetching Assets)
+<miris-stream>
+Live Demo
+The primary element for displaying a 3D asset. Can be used standalone or within a <miris-scene>.
+
+Standalone Usage
+When used alone, <miris-stream> creates its own rendering context:
+
+HTML
+Copy
+<miris-stream
+  key="YOUR_VIEWER_KEY"
+  uuid="82c0d8ac-993f-44b6-b472-7b45e433b96c"
+  controls
+  style="width: 100%; height: 500px;"
+></miris-stream>
+Attributes
+Attribute	Type	Required	Description
+uuid	string	Yes	The UUID of the asset to display
+key	string	Yes*	Your viewer key (*required when standalone)
+controls	boolean	No	Enable drag-to-rotate interaction
+disabled	boolean	No	Pause streaming
+position	string	No	Position as "x y z" (e.g., "0 -0.5 -2")
+rotation	string	No	Rotation in radians as "x y z"
+scale	string	No	Scale as "x y z" (e.g., "1.5 1.5 1.5")
+zoom	number	No	Uniform scale multiplier
+JavaScript API
+JavaScript
+Copy
+const stream = document.querySelector('miris-stream');
+
+// Change asset
+stream.uuid = "new-asset-uuid";
+
+// Toggle controls
+stream.controls = true;
+stream.disabled = false;
+
+// Transform properties
+stream.position.set(0, -0.5, -2);
+stream.rotation.y = Math.PI / 4;  // 45 degrees
+stream.scale.set(2, 2, 2);
+stream.zoom = 1.5;
+<miris-scene>
+Live Demo
+Container element for multiple 3D assets with shared rendering context.
+
+HTML
+Copy
+<miris-scene key="YOUR_VIEWER_KEY" style="width: 100%; height: 600px;">
+  <miris-stream uuid="asset-1" position="-0.8 0 -2" controls></miris-stream>
+  <miris-stream uuid="asset-2" position="0.8 0 -2" controls></miris-stream>
+</miris-scene>
+JavaScript API
+JavaScript
+Copy
+const scene = document.querySelector('miris-scene');
+
+// Set viewer key programmatically
+scene.setViewerKey("new-viewer-key");
+
+// Fetch available assets
+const assets = await scene.fetchAssets();
+console.log(assets);
+// [{ uuid: "...", name: "Asset Name", contentUrl: "..." }, ...]
+
+// Fetch assets with specific tags
+const furnitureAssets = await scene.fetchAssets("furniture,office");
+
+// Get render statistics
+const stats = scene.getRenderStats();
+// { callCount: 12, programCount: 3, triangleCount: 45000 }
+<miris-group>
+Live Demo
+Groups multiple elements with shared transforms. Useful for positioning multiple assets together.
+
+HTML
+Copy
+<miris-scene key="YOUR_VIEWER_KEY">
+  <miris-group position="0 0 -5" rotation="0 0.5 0">
+    <miris-stream uuid="asset-1"></miris-stream>
+    <miris-stream uuid="asset-2" position="2 0 0"></miris-stream>
+  </miris-group>
+</miris-scene>
+Attribute	Type	Description
+position	string	Position as "x y z"
+rotation	string	Rotation in radians as "x y z"
+scale	string	Scale as "x y z"
+zoom	number	Uniform scale multiplier
+Example: Product Showcase
+Live Demo
+Display a product with user rotation controls:
+
+HTML
+Copy
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Product View</title>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@miris-inc/components/components.mjs"></script>
+  <style>
+    .product-viewer {
+      width: 100%;
+      max-width: 800px;
+      height: 600px;
+      margin: 0 auto;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="product-viewer">
+    <miris-stream
+      key="YOUR_VIEWER_KEY"
+      uuid="YOUR_PRODUCT_UUID"
+      position="0 -0.3 -2"
+      controls
+    ></miris-stream>
+  </div>
+</body>
+</html>
+Example: Asset Gallery
+Live Demo
+Create a gallery where users can select different assets:
+
+HTML + JavaScript
+Copy
+<div class="gallery">
+  <div class="viewer">
+    <miris-scene id="scene" key="YOUR_VIEWER_KEY">
+      <miris-stream id="stream" controls></miris-stream>
+    </miris-scene>
+  </div>
+  <div class="asset-list" id="assets"></div>
+</div>
+
+<script type="module">
+  await customElements.whenDefined('miris-scene');
+  
+  const scene = document.getElementById('scene');
+  const stream = document.getElementById('stream');
+  const assetList = document.getElementById('assets');
+  
+  // Fetch all available assets
+  const assets = await scene.fetchAssets();
+  
+  // Create buttons for each asset
+  assets.forEach(asset => {
+    const btn = document.createElement('button');
+    btn.textContent = asset.name;
+    btn.onclick = () => {
+      stream.uuid = asset.uuid;
+    };
+    assetList.appendChild(btn);
+  });
+</script>
+Example: Rotating Display
+Live Demo
+Auto-rotate a product for a dynamic showcase:
+
+HTML + JavaScript
+Copy
+<miris-stream
+  id="product"
+  key="YOUR_VIEWER_KEY"
+  uuid="YOUR_PRODUCT_UUID"
+  position="0 -0.5 -3"
+></miris-stream>
+
+<script type="module">
+  const stream = document.getElementById('product');
+  
+  function animate() {
+    requestAnimationFrame(animate);
+    stream.rotation.y += 0.005;  // Slow rotation
+  }
+  animate();
+</script>
+React Integration
+Live Demo →
+JSX
+Copy
+import { useEffect, useRef } from 'react';
+import '@miris-inc/components';
+
+function MirisViewer({ viewerKey, assetUuid, className }) {
+  const streamRef = useRef(null);
+
+  return (
+    <miris-stream
+      ref={streamRef}
+      key={viewerKey}
+      uuid={assetUuid}
+      controls
+      class={className}
+      style={{ width: '100%', height: '100%', display: 'block' }}
+    />
+  );
+}
+
+// Usage
+function ProductPage({ product }) {
+  return (
+    <div style={{ height: '500px' }}>
+      <MirisViewer
+        viewerKey={process.env.REACT_APP_MIRIS_KEY}
+        assetUuid={product.mirisUuid}
+      />
+    </div>
+  );
+}
+Vue Integration
+Live Demo →
+Vue
+Copy
+<template>
+  <div class="viewer-container">
+    <miris-stream
+      ref="stream"
+      :key="viewerKey"
+      :uuid="assetUuid"
+      controls
+    />
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue';
+import '@miris-inc/components';
+
+const props = defineProps({
+  viewerKey: String,
+  assetUuid: String
+});
+
+const stream = ref(null);
+
+onMounted(async () => {
+  await customElements.whenDefined('miris-stream');
+});
+</script>
+
+<style scoped>
+.viewer-container { width: 100%; height: 500px; }
+miris-stream { width: 100%; height: 100%; display: block; }
+</style>
+Three.js Integration
+Live Demo →
+For advanced use cases requiring full Three.js control, use the @miris-inc/three package.
+
+Installation
+Terminal
+Copy
+npm install @miris-inc/three three
+Basic Usage
+JavaScript
+Copy
+import { MirisScene, MirisStream } from '@miris-inc/three';
+import { PerspectiveCamera, WebGLRenderer } from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+
+// Setup
+const container = document.getElementById('viewer');
+const scene = new MirisScene('YOUR_VIEWER_KEY');
+const camera = new PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+const renderer = new WebGLRenderer({ antialias: true, alpha: true });
+
+renderer.setSize(container.clientWidth, container.clientHeight);
+container.appendChild(renderer.domElement);
+
+// Add orbit controls
+const controls = new OrbitControls(camera, renderer.domElement);
+
+// Position camera
+camera.position.set(0, 1, 5);
+
+// Add a Miris stream
+const stream = new MirisStream('YOUR_ASSET_UUID');
+scene.add(stream);
+
+// Render loop
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+Fetching Assets
+Retrieve your available assets programmatically:
+
+JavaScript
+Copy
+const scene = document.querySelector('miris-scene');
+
+// Get all assets
+const allAssets = await scene.fetchAssets();
+
+// Get assets with specific tags
+const officeAssets = await scene.fetchAssets('office');
+const multiTagAssets = await scene.fetchAssets('furniture,modern,wood');
+Asset Object Structure
+TypeScript
+Copy
+interface Asset {
+  uuid: string;       // Unique identifier
+  name: string;       // Display name
+  contentUrl: string; // Asset content URL
+}
+Styling & Responsive Design
+CSS Sizing
+Miris elements require explicit dimensions. They won't display without width and height:
+
+CSS
+Copy
+/* Block display with explicit height */
+miris-stream {
+  display: block;
+  width: 100%;
+  height: 400px;
+}
+
+/* Responsive sizing */
+@media (min-width: 768px) {
+  miris-stream { height: 500px; }
+}
+
+@media (min-width: 1200px) {
+  miris-stream { height: 700px; }
+}
+Aspect Ratio Container
+CSS
+Copy
+.aspect-container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 aspect ratio */
+}
+
+.aspect-container miris-stream {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+Performance Tips
+Lazy Loading
+Only load assets when visible:
+
+JavaScript
+Copy
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const stream = entry.target;
+    stream.disabled = !entry.isIntersecting;
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('miris-stream').forEach(stream => {
+  stream.disabled = true;  // Start disabled
+  observer.observe(stream);
+});
+Browser Support
+Browser	Minimum Version	Notes
+Chrome	90+	Full support
+Firefox	90+	Full support
+Safari	15+	Full support
+Edge	90+	Full support
+iOS Safari	15+	Full support
+Requirements
+WebGL 2.0 support
+WebAssembly support
+ES2020+ JavaScript
+Troubleshooting
+⚠️ Black Screen
+Element has no dimensions. Add width and height CSS properties.
+
+⚠️ Nothing Loads
+Check your viewer key and asset UUID are correct.
+
+⚠️ Poor Performance
+Try reducing the number of simultaneous streams or use lazy loading.
+
+Support
+Need help? We're here for you.
+
+Email: support@miris.com
+Dashboard: app.miris.com
+When Reporting Issues
+Please include:
+
+Browser and version
+Operating system
+Console error messages
+Steps to reproduce
