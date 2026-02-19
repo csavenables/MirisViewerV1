@@ -11,9 +11,6 @@ if (!MIRIS_VIEWER_KEY || !Array.isArray(MIRIS_ASSETS) || MIRIS_ASSETS.length !==
   throw new Error("Invalid Miris config. Check splat-config.js.");
 }
 
-await customElements.whenDefined("miris-scene");
-await customElements.whenDefined("miris-stream");
-
 const sceneEl = document.createElement("miris-scene");
 sceneEl.setAttribute("key", MIRIS_VIEWER_KEY);
 sceneEl.style.width = "100%";
@@ -27,6 +24,9 @@ let activeAssetId = "";
 let zoomExtentsEnabled = true;
 let autoSpinEnabled = false;
 const IS_COARSE_POINTER = window.matchMedia("(pointer: coarse)").matches;
+const MOBILE_Z_SCALE = 0.62;
+const MOBILE_ZOOM_SCALE = 1.22;
+let componentsReady = false;
 
 const manualStateByAssetId = new Map();
 const fitProfileByAssetId = new Map();
@@ -74,6 +74,21 @@ function cloneState(state) {
   };
 }
 
+function hasStreamTransformApi() {
+  return Boolean(
+    streamEl.position &&
+    typeof streamEl.position.set === "function" &&
+    streamEl.rotation &&
+    typeof streamEl.rotation.set === "function"
+  );
+}
+
+function setControlsEnabled(enabled) {
+  controlsRoot.querySelectorAll("button, input[type=\"checkbox\"]").forEach((el) => {
+    el.disabled = !enabled;
+  });
+}
+
 function getAssetById(assetId) {
   return MIRIS_ASSETS.find((asset) => asset.id === assetId);
 }
@@ -113,8 +128,8 @@ function getDefaultViewState(asset) {
       rotationZ: 0
     };
     if (IS_COARSE_POINTER) {
-      state.z = clamp(state.z * 1.2, MIN_Z, MAX_Z);
-      state.zoom = clamp(state.zoom * 0.86, MIN_ZOOM, MAX_ZOOM);
+      state.z = clamp(state.z * MOBILE_Z_SCALE, MIN_Z, MAX_Z);
+      state.zoom = clamp(state.zoom * MOBILE_ZOOM_SCALE, MIN_ZOOM, MAX_ZOOM);
     }
     return state;
   }
@@ -135,10 +150,33 @@ function getDefaultViewState(asset) {
     rotationZ: 0
   };
   if (IS_COARSE_POINTER) {
-    state.z = clamp(state.z * 1.2, MIN_Z, MAX_Z);
-    state.zoom = clamp(state.zoom * 0.86, MIN_ZOOM, MAX_ZOOM);
+    state.z = clamp(state.z * MOBILE_Z_SCALE, MIN_Z, MAX_Z);
+    state.zoom = clamp(state.zoom * MOBILE_ZOOM_SCALE, MIN_ZOOM, MAX_ZOOM);
   }
   return state;
+}
+
+let mobileVisibilityToken = 0;
+async function ensureMobileVisibility(assetId) {
+  if (!IS_COARSE_POINTER) return;
+  const token = ++mobileVisibilityToken;
+
+  // Wait for frames so the first asset draw can land.
+  await raf();
+  await raf();
+  await raf();
+  if (token !== mobileVisibilityToken || activeAssetId !== assetId) return;
+
+  const measurement = measureFill();
+  if (measurement && measurement.heightRatio > 0.08) {
+    return;
+  }
+
+  const current = readCurrentViewState();
+  current.z = clamp(current.z + Math.max(1.4, Math.abs(current.z) * 0.35), MIN_Z, MAX_Z);
+  current.zoom = clamp(current.zoom * 1.25, MIN_ZOOM, MAX_ZOOM);
+  applyViewState(current);
+  saveManualStateForActive(current);
 }
 
 function readCurrentViewState() {
@@ -154,6 +192,7 @@ function readCurrentViewState() {
 }
 
 function applyViewState(state) {
+  if (!hasStreamTransformApi()) return;
   const safe = cloneState(state);
   streamEl.position.set(safe.x, safe.y, clamp(safe.z, MIN_Z, MAX_Z));
   streamEl.zoom = safe.zoom;
@@ -354,6 +393,11 @@ async function fitActiveAsset() {
 function setActiveAsset(assetId) {
   const selected = getAssetById(assetId);
   if (!selected) return;
+  if (!componentsReady) {
+    setActiveButton(assetId);
+    activeAssetId = assetId;
+    return;
+  }
 
   if (activeAssetId === assetId) {
     if (zoomExtentsEnabled) {
@@ -365,6 +409,7 @@ function setActiveAsset(assetId) {
   saveActiveManualState();
   setActiveButton(assetId);
   streamEl.uuid = selected.uuid;
+  streamEl.setAttribute("uuid", selected.uuid);
   activeAssetId = assetId;
 
   const cachedFit = getCachedFit(assetId);
@@ -377,11 +422,14 @@ function setActiveAsset(assetId) {
   } else {
     applyViewState(manualView ?? cachedFit ?? defaultView);
   }
+
+  ensureMobileVisibility(assetId);
 }
 
 MIRIS_ASSETS.forEach((asset) => {
   const button = document.createElement("button");
   button.type = "button";
+  button.disabled = true;
   button.textContent = asset.label;
   button.dataset.assetId = asset.id;
   button.addEventListener("click", () => {
@@ -393,6 +441,7 @@ MIRIS_ASSETS.forEach((asset) => {
 function createViewControlButton(label, onClick) {
   const button = document.createElement("button");
   button.type = "button";
+  button.disabled = true;
   button.className = "view-tool";
   button.textContent = label;
   button.addEventListener("click", onClick);
@@ -409,6 +458,7 @@ function createZoomExtentsToggle() {
 
   const input = document.createElement("input");
   input.type = "checkbox";
+  input.disabled = true;
   input.checked = zoomExtentsEnabled;
   input.addEventListener("change", () => {
     zoomExtentsEnabled = input.checked;
@@ -656,4 +706,29 @@ function animate() {
 }
 animate();
 
-setActiveAsset(MIRIS_ASSETS[0].id);
+setActiveButton(MIRIS_ASSETS[0].id);
+setControlsEnabled(false);
+
+async function startViewer() {
+  try {
+    await Promise.race([
+      Promise.all([
+        customElements.whenDefined("miris-scene"),
+        customElements.whenDefined("miris-stream")
+      ]),
+      new Promise((_, reject) => {
+        window.setTimeout(() => reject(new Error("Miris components init timeout.")), 10000);
+      })
+    ]);
+  } catch {
+    // Keep UI visible even if component init is slow/failed on this device.
+    return;
+  }
+
+  componentsReady = true;
+  setControlsEnabled(true);
+  const preferred = activeAssetId || MIRIS_ASSETS[0].id;
+  setActiveAsset(preferred);
+}
+
+startViewer();
