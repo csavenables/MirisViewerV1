@@ -125,6 +125,28 @@ function updateDebugHud() {
   ].join("\n");
 }
 
+async function loadMirisComponents() {
+  const componentModuleUrls = [
+    "https://cdn.jsdelivr.net/npm/@miris-inc/components/components.mjs",
+    "https://unpkg.com/@miris-inc/components/components.mjs"
+  ];
+
+  let lastError = null;
+  for (const moduleUrl of componentModuleUrls) {
+    try {
+      await import(moduleUrl);
+      return;
+    } catch (error) {
+      lastError = error;
+      const msg = typeof error?.message === "string" ? error.message : String(error);
+      lastRuntimeError = `components import failed: ${moduleUrl} :: ${msg}`;
+      updateDebugHud();
+    }
+  }
+
+  throw lastError || new Error("Failed to load Miris components.");
+}
+
 function getAssetById(assetId) {
   return MIRIS_ASSETS.find((asset) => asset.id === assetId);
 }
@@ -748,10 +770,18 @@ setActiveButton(MIRIS_ASSETS[0].id);
 setControlsEnabled(false);
 
 async function startViewer() {
-  await Promise.all([
-    customElements.whenDefined("miris-scene"),
-    customElements.whenDefined("miris-stream")
-  ]);
+  try {
+    await loadMirisComponents();
+    await Promise.all([
+      customElements.whenDefined("miris-scene"),
+      customElements.whenDefined("miris-stream")
+    ]);
+  } catch (error) {
+    const msg = typeof error?.message === "string" ? error.message : String(error);
+    lastRuntimeError = `viewer init failed: ${msg}`;
+    updateDebugHud();
+    return;
+  }
 
   componentsReady = true;
   setControlsEnabled(true);
