@@ -27,6 +27,8 @@ const IS_COARSE_POINTER = window.matchMedia("(pointer: coarse)").matches;
 const MOBILE_Z_SCALE = 0.62;
 const MOBILE_ZOOM_SCALE = 1.22;
 let componentsReady = false;
+const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
+let lastRuntimeError = "";
 
 const manualStateByAssetId = new Map();
 const fitProfileByAssetId = new Map();
@@ -87,6 +89,40 @@ function setControlsEnabled(enabled) {
   controlsRoot.querySelectorAll("button, input[type=\"checkbox\"]").forEach((el) => {
     el.disabled = !enabled;
   });
+}
+
+let debugHud = null;
+function ensureDebugHud() {
+  if (!DEBUG_MODE || debugHud) return;
+  debugHud = document.createElement("pre");
+  debugHud.style.position = "fixed";
+  debugHud.style.left = "8px";
+  debugHud.style.bottom = "8px";
+  debugHud.style.zIndex = "9999";
+  debugHud.style.margin = "0";
+  debugHud.style.padding = "8px";
+  debugHud.style.background = "rgba(0,0,0,0.7)";
+  debugHud.style.color = "#b7f7c1";
+  debugHud.style.font = "11px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  debugHud.style.border = "1px solid rgba(183,247,193,0.35)";
+  debugHud.style.borderRadius = "8px";
+  debugHud.style.pointerEvents = "none";
+  document.body.appendChild(debugHud);
+}
+
+function updateDebugHud() {
+  if (!DEBUG_MODE) return;
+  ensureDebugHud();
+  if (!debugHud) return;
+  const hasCanvas = Boolean(getRenderCanvas());
+  debugHud.textContent = [
+    `ready: ${componentsReady}`,
+    `asset: ${activeAssetId || "-"}`,
+    `canvas: ${hasCanvas}`,
+    `coi: ${window.crossOriginIsolated}`,
+    `coarse: ${IS_COARSE_POINTER}`,
+    `error: ${lastRuntimeError || "-"}`
+  ].join("\n");
 }
 
 function getAssetById(assetId) {
@@ -424,6 +460,7 @@ function setActiveAsset(assetId) {
   }
 
   ensureMobileVisibility(assetId);
+  updateDebugHud();
 }
 
 MIRIS_ASSETS.forEach((asset) => {
@@ -702,6 +739,7 @@ function animate() {
     saveManualStateForActive(current);
   }
 
+  updateDebugHud();
   requestAnimationFrame(animate);
 }
 animate();
@@ -710,25 +748,27 @@ setActiveButton(MIRIS_ASSETS[0].id);
 setControlsEnabled(false);
 
 async function startViewer() {
-  try {
-    await Promise.race([
-      Promise.all([
-        customElements.whenDefined("miris-scene"),
-        customElements.whenDefined("miris-stream")
-      ]),
-      new Promise((_, reject) => {
-        window.setTimeout(() => reject(new Error("Miris components init timeout.")), 10000);
-      })
-    ]);
-  } catch {
-    // Keep UI visible even if component init is slow/failed on this device.
-    return;
-  }
+  await Promise.all([
+    customElements.whenDefined("miris-scene"),
+    customElements.whenDefined("miris-stream")
+  ]);
 
   componentsReady = true;
   setControlsEnabled(true);
   const preferred = activeAssetId || MIRIS_ASSETS[0].id;
   setActiveAsset(preferred);
+  updateDebugHud();
 }
 
 startViewer();
+
+window.addEventListener("error", (event) => {
+  lastRuntimeError = event.message || "window error";
+  updateDebugHud();
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason;
+  lastRuntimeError = typeof reason === "string" ? reason : (reason?.message || "unhandled rejection");
+  updateDebugHud();
+});
