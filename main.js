@@ -26,6 +26,7 @@ viewerStage.appendChild(sceneEl);
 let activeAssetId = "";
 let zoomExtentsEnabled = true;
 let autoSpinEnabled = false;
+const IS_COARSE_POINTER = window.matchMedia("(pointer: coarse)").matches;
 
 const manualStateByAssetId = new Map();
 const fitProfileByAssetId = new Map();
@@ -102,7 +103,7 @@ function getDefaultViewState(asset) {
     : null;
 
   if (configuredPosition) {
-    return {
+    const state = {
       x: Number(configuredPosition[0]) || 0,
       y: Number(configuredPosition[1]) || 0,
       z: Number(configuredPosition[2]) || -6,
@@ -111,6 +112,11 @@ function getDefaultViewState(asset) {
       rotationY: 0,
       rotationZ: 0
     };
+    if (IS_COARSE_POINTER) {
+      state.z = clamp(state.z * 1.2, MIN_Z, MAX_Z);
+      state.zoom = clamp(state.zoom * 0.86, MIN_ZOOM, MAX_ZOOM);
+    }
+    return state;
   }
 
   const defaultTargetY = Array.isArray(asset?.defaultTarget) && Number.isFinite(Number(asset.defaultTarget[1]))
@@ -119,7 +125,7 @@ function getDefaultViewState(asset) {
   const defaultDistance = getDistanceFromAssetDefaults(asset);
   const defaultZ = -clamp(defaultDistance * 1.1, 4.2, 9.8);
 
-  return {
+  const state = {
     x: 0,
     y: -defaultTargetY * 0.65,
     z: defaultZ,
@@ -128,6 +134,11 @@ function getDefaultViewState(asset) {
     rotationY: 0,
     rotationZ: 0
   };
+  if (IS_COARSE_POINTER) {
+    state.z = clamp(state.z * 1.2, MIN_Z, MAX_Z);
+    state.zoom = clamp(state.zoom * 0.86, MIN_ZOOM, MAX_ZOOM);
+  }
+  return state;
 }
 
 function readCurrentViewState() {
@@ -269,6 +280,12 @@ async function runFitSolver(assetId, seedState) {
   const token = ++activeFitToken;
   let state = cloneState(seedState);
   applyViewState(state);
+
+  // Mobile-safe path: avoid repeated readbacks/iterations that can trigger GPU memory pressure.
+  if (IS_COARSE_POINTER) {
+    setCachedFit(assetId, state);
+    return;
+  }
 
   // Allow stream startup to produce a measurable frame.
   let measurement = null;
@@ -512,7 +529,8 @@ viewerStage.addEventListener("pointermove", (event) => {
 
       if (lastTouchDistance > 0 && distance > 0) {
         const distDelta = distance - lastTouchDistance;
-        current.z = clamp(current.z + (distDelta * TOUCH_PINCH_DOLLY_SPEED), MIN_Z, MAX_Z);
+        const pinchSpeed = IS_COARSE_POINTER ? (TOUCH_PINCH_DOLLY_SPEED * 0.7) : TOUCH_PINCH_DOLLY_SPEED;
+        current.z = clamp(current.z + (distDelta * pinchSpeed), MIN_Z, MAX_Z);
       }
 
       lastTouchCenterX = center.x;
@@ -606,7 +624,8 @@ viewerStage.addEventListener("wheel", (event) => {
     const zoomMultiplier = event.deltaY < 0 ? 1 + (0.08 * wheelUnit) : 1 / (1 + (0.08 * wheelUnit));
     current.zoom = clamp(current.zoom * zoomMultiplier, MIN_ZOOM, MAX_ZOOM);
   } else {
-    current.z = clamp(current.z - (event.deltaY * WHEEL_DOLLY_SPEED), MIN_Z, MAX_Z);
+    const wheelSpeed = IS_COARSE_POINTER ? (WHEEL_DOLLY_SPEED * 0.75) : WHEEL_DOLLY_SPEED;
+    current.z = clamp(current.z - (event.deltaY * wheelSpeed), MIN_Z, MAX_Z);
   }
 
   applyViewState(current);
